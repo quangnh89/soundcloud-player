@@ -1,4 +1,4 @@
-# Copyright (C) 2017 Quang Nguyen http://develbranch.com
+# Copyright (C) 2017 Quang Nguyen https://develbranch.com
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
