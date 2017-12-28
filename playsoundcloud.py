@@ -1,3 +1,5 @@
+# Copyright (C) 2017 Quang Nguyen http://develbranch.com
+#
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
@@ -24,22 +26,28 @@ import random
 
 
 class SoundCloudPlayer():
-    def __init__(self, client_id=None, shuffle_tracks=False):
+    def __init__(self, client_id=None, client_secret=None, shuffle_tracks=False):
         self.tmp_file = '/tmp/now_playing_file.mp3'
         self.shuffle = shuffle_tracks
-        if client_id is not None:
-            self.client = soundcloud.Client(client_id)
-        else:
+
+        if client_id is None:
             if 'SOUNDCLOUD_CLIENT_ID' not in os.environ:
                 raise Exception("Set client id to run")
-            # create a client object with your app credentials
-            self.client = soundcloud.Client(client_id=os.environ['SOUNDCLOUD_CLIENT_ID'])
+            client_id = os.environ['SOUNDCLOUD_CLIENT_ID']
+        if client_secret is None and 'SOUNDCLOUD_CLIENT_SECRET' in os.environ:
+            client_secret = os.environ['SOUNDCLOUD_CLIENT_SECRET']
+        self.client = soundcloud.Client(client_id=client_id, client_secret=client_secret)
+
+    def logmsg(self, msg):
+        print msg
 
     def download(self, url):
-        headers = {'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:57.0) Gecko/20100101 Firefox/57.0',
-                   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                   'Accept-Language': 'en-US,en;q=0.5', 'DNT': '1', 'Connection': 'keep-alive',
-                   'Upgrade-Insecure-Requests': '1'}
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:57.0) Gecko/20100101 Firefox/57.0',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5', 'DNT': '1', 'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'
+        }
         response = requests.get(url, headers=headers, stream=True)
         out_file = open(self.tmp_file, 'wb', 0)
         shutil.copyfileobj(response.raw, out_file)
@@ -48,8 +56,7 @@ class SoundCloudPlayer():
         del response
 
     def play(self):
-        cmd = 'vlc -I dummy ' + self.tmp_file + ' vlc://quit'
-        cmd += '>/dev/null 2>&1'
+        cmd = 'vlc -I dummy ' + self.tmp_file + ' vlc://quit >/dev/null 2>&1'
         p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
         p.wait()
 
@@ -62,17 +69,23 @@ class SoundCloudPlayer():
             return None, None
 
     def get_track_location(self, uri):
-        # fetch track to stream
-        track = self.client.get(uri)
+        try:
+            # fetch track to stream
+            track = self.client.get(uri)
 
-        # get the tracks streaming URL
-        stream_url = self.client.get(track.stream_url, allow_redirects=False)
+            # get the tracks streaming URL
+            stream_url = self.client.get(track.stream_url, allow_redirects=False)
 
-        # print the tracks stream URL
-        return stream_url.location
+            # print the tracks stream URL
+            return stream_url.location
+        except Exception as e:
+            self.logmsg(str(e))
+            return None
 
     def play_uri(self, uri):
         url = self.get_track_location(uri)
+        if url is None:
+            return
         if os.path.exists(self.tmp_file):
             os.remove(self.tmp_file)
             time.sleep(1)
@@ -126,26 +139,29 @@ def usage():
     print "Developed by quangnh89."
     print "Copyright 2017, GPLv3"
     print
-    print sys.argv[0], '[-c client_id] url1 [url2 [...] ]'
+    print sys.argv[0], '[-c client_id] [-s client_secret] url1 [url2 [...] ]'
     print '-h Show this message'
-    print '-c Set client ID, or set SOUNDCLOUD_CLIENT_ID'
+    print '-c Set client ID, or set SOUNDCLOUD_CLIENT_ID environment variable'
+    print '-k Set client secret, or set SOUNDCLOUD_CLIENT_SECRET environment variable'
     print '-s shuffle all tracks'
     sys.exit(0)
 
 
 if __name__ == "__main__":
-    argv = sys.argv[1:]
     client_id = None
+    client_secret = None
     shuffle_tracks = False
-    opts, args = getopt.getopt(argv, "hc:s", ["help", "client-id=", "shuffle"])
+    opts, args = getopt.getopt(sys.argv[1:], "hc:k:s", ["help", "client-id=", "client-secret=", "shuffle"])
     for opt, arg in opts:
         if opt in ("-h", "--help"):
             usage()
         if opt in ("-c", "--client-id"):
             client_id = arg
+        if opt in ("-k", "--client-secret"):
+            client_secret = arg
         if opt in ("-s", "--shuffle"):
             shuffle_tracks = True
 
-    scp = SoundCloudPlayer(client_id, shuffle_tracks)
+    scp = SoundCloudPlayer(client_id, client_secret, shuffle_tracks)
     for a in args:
-        scp.play_uri(a)
+        scp.play_soundcloud_url(a)
